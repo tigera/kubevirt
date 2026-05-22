@@ -7,7 +7,9 @@
 # network testing.
 #
 # Environment variables:
-#   MOCKVIRT_KUBECONFIG — path to kubeconfig (falls back to KUBECONFIG, then ~/.kube/config)
+#   MOCKVIRT_KUBECONFIG      — path to kubeconfig (falls back to KUBECONFIG, then ~/.kube/config)
+#   MOCKVIRT_MANIFESTS_DIR   — directory containing kubevirt-operator.yaml and kubevirt-cr.yaml
+#                              (defaults to <repo-root>/manifests/release)
 
 set -euo pipefail
 
@@ -15,8 +17,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 NAMESPACE="kubevirt"
-OPERATOR_MANIFEST="${REPO_ROOT}/manifests/release/kubevirt-operator.yaml"
-CR_MANIFEST="${REPO_ROOT}/manifests/release/kubevirt-cr.yaml"
+MANIFESTS_DIR="${MOCKVIRT_MANIFESTS_DIR:-${REPO_ROOT}/manifests/release}"
+OPERATOR_MANIFEST="${MANIFESTS_DIR}/kubevirt-operator.yaml"
+CR_MANIFEST="${MANIFESTS_DIR}/kubevirt-cr.yaml"
 
 # --- Resolve kubeconfig ---
 
