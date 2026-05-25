@@ -99,7 +99,7 @@ type FakeDomainManager struct {
 
 // SimBuildIteration is incremented each time the code is rebuilt,
 // so we can verify which version is running in the cluster.
-const SimBuildIteration = 15
+const SimBuildIteration = 16
 
 // NewFakeDomainManager creates a FakeDomainManager that simulates VM lifecycle.
 func NewFakeDomainManager(
@@ -447,8 +447,12 @@ func (f *FakeDomainManager) MigrateVMI(vmi *v1.VirtualMachineInstance, _ *cmdcli
 	// for EndTimestamp to determine when migration is complete.
 	f.domain.Spec.Metadata.KubeVirt.Migration = &migrationMetadata
 
-	// Simulate migration in background
-	go f.simulateMigration(vmi)
+	// Simulate migration in background — branch on timeout annotation
+	if vmi.Annotations["kubevirt.io/migration-timeout"] == "true" {
+		go f.simulateMigrationTimeout(vmi)
+	} else {
+		go f.simulateMigration(vmi)
+	}
 	return nil
 }
 
@@ -491,6 +495,36 @@ func (f *FakeDomainManager) simulateMigration(vmi *v1.VirtualMachineInstance) {
 
 	log.Log.Object(vmi).Info("Simulation mode: migration completed on source, domain shutoff (process kept alive for cleanup)")
 
+	f.emitEvent(watch.Modified)
+}
+
+func (f *FakeDomainManager) simulateMigrationTimeout(vmi *v1.VirtualMachineInstance) {
+	// Simulate migration running for a bit before timing out
+	select {
+	case <-time.After(3 * time.Second):
+	case <-f.stopChan:
+		return
+	}
+
+	now := metav1.Now()
+	f.metadataCache.Migration.WithSafeBlock(func(md *api.MigrationMetadata, initialized bool) {
+		md.EndTimestamp = &now
+		md.Failed = true
+		md.FailureReason = "Timeout detected"
+	})
+
+	// Set failure on domain metadata so virt-handler's
+	// setMigrationProgressStatus() reads it and propagates to VMI status.
+	// Domain stays Running (NOT Shutoff/Migrated) — same as real timeout.
+	f.mu.Lock()
+	if f.domain != nil && f.domain.Spec.Metadata.KubeVirt.Migration != nil {
+		f.domain.Spec.Metadata.KubeVirt.Migration.EndTimestamp = &now
+		f.domain.Spec.Metadata.KubeVirt.Migration.Failed = true
+		f.domain.Spec.Metadata.KubeVirt.Migration.FailureReason = "Timeout detected"
+	}
+	f.mu.Unlock()
+
+	log.Log.Object(vmi).Info("Simulation mode: migration timeout simulated")
 	f.emitEvent(watch.Modified)
 }
 
