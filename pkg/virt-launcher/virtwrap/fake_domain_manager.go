@@ -99,7 +99,7 @@ type FakeDomainManager struct {
 
 // SimBuildIteration is incremented each time the code is rebuilt,
 // so we can verify which version is running in the cluster.
-const SimBuildIteration = 16
+const SimBuildIteration = 17
 
 // NewFakeDomainManager creates a FakeDomainManager that simulates VM lifecycle.
 func NewFakeDomainManager(
@@ -417,7 +417,10 @@ func (f *FakeDomainManager) ListAllDomains() ([]*api.Domain, error) {
 func (f *FakeDomainManager) MigrateVMI(vmi *v1.VirtualMachineInstance, _ *cmdclient.MigrationOptions) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	log.Log.Object(vmi).Info("Simulation mode: MigrateVMI (source) called")
+	log.Log.Object(vmi).Infof("Simulation mode: MigrateVMI (source) called, labels=%v annotations=%v", vmi.Labels, vmi.Annotations)
+	if vmi.Labels["migration-timeout"] == "true" {
+		log.Log.Object(vmi).Info("Simulation mode: migration-timeout label detected, will simulate timeout failure")
+	}
 
 	// Idempotency guard: virt-handler may call MigrateVMI multiple times
 	// during a single migration (e.g., on re-enqueue). Only start the
@@ -447,8 +450,10 @@ func (f *FakeDomainManager) MigrateVMI(vmi *v1.VirtualMachineInstance, _ *cmdcli
 	// for EndTimestamp to determine when migration is complete.
 	f.domain.Spec.Metadata.KubeVirt.Migration = &migrationMetadata
 
-	// Simulate migration in background — branch on timeout annotation
-	if vmi.Annotations["kubevirt.io/migration-timeout"] == "true" {
+	// Simulate migration in background — branch on timeout label.
+	// The label originates from VM spec.template.metadata.labels and is
+	// automatically propagated to the VMI by virt-controller.
+	if vmi.Labels["migration-timeout"] == "true" {
 		go f.simulateMigrationTimeout(vmi)
 	} else {
 		go f.simulateMigration(vmi)
