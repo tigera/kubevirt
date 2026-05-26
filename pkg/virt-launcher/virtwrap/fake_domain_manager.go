@@ -99,7 +99,7 @@ type FakeDomainManager struct {
 
 // SimBuildIteration is incremented each time the code is rebuilt,
 // so we can verify which version is running in the cluster.
-const SimBuildIteration = 17
+const SimBuildIteration = 18
 
 // NewFakeDomainManager creates a FakeDomainManager that simulates VM lifecycle.
 func NewFakeDomainManager(
@@ -593,8 +593,14 @@ func (f *FakeDomainManager) PrepareMigrationTarget(vmi *v1.VirtualMachineInstanc
 	// when migration is complete and call ackMigrationCompletion.
 	f.domain.Spec.Metadata.KubeVirt.Migration = &targetMigrationMeta
 
-	// Simulate target receiving the VM in the background
-	go f.simulateTargetReceive(vmi, domainName)
+	// Simulate target receiving the VM in the background.
+	// When migration-timeout is set, the source will simulate a timeout
+	// failure — the target must NOT signal completion (no EndTimestamp).
+	if vmi.Labels["migration-timeout"] == "true" {
+		log.Log.Object(vmi).Info("Simulation mode: migration-timeout label detected on target, will not complete migration")
+	} else {
+		go f.simulateTargetReceive(vmi, domainName)
+	}
 	return nil
 }
 
