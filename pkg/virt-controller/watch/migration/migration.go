@@ -1233,16 +1233,6 @@ func (c *Controller) handleTargetPodHandoff(migration *virtv1.VirtualMachineInst
 	}
 	vmiCopy.ObjectMeta.Labels[virtv1.MigrationTargetNodeNameLabel] = pod.Spec.NodeName
 
-	// Propagate simulation-mode labels from VMIM to VMI annotations so
-	// virt-launcher's FakeDomainManager can read them (VMIM labels are not
-	// sent over the MigrateVMI gRPC call).
-	if v, ok := migration.Labels["migration-timeout"]; ok {
-		if vmiCopy.Annotations == nil {
-			vmiCopy.Annotations = make(map[string]string)
-		}
-		vmiCopy.Annotations["kubevirt.io/migration-timeout"] = v
-	}
-
 	if controller.VMIHasHotplugVolumes(vmiCopy) {
 		attachmentPods, err := controller.AttachmentPods(pod, c.podIndexer)
 		if err != nil {

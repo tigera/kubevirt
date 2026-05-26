@@ -152,6 +152,27 @@ until kubectl wait -n "${NAMESPACE}" kv kubevirt --for condition=Available --tim
     sleep 30
 done
 
+# --- Restart Calico Typha to pick up KubeVirt CRDs ---
+#
+# Typha watches KubeVirt VirtualMachineInstanceMigration (VMIM) resources to
+# feed Felix's LiveMigration calculator. If Calico was deployed before KubeVirt,
+# Typha's initial CRD discovery misses the VMIM API and only retries every 30
+# minutes. Restarting Typha (and calico-node, which reconnects to Typha) forces
+# immediate detection of the newly available VMIM API.
+
+CALICO_NS="calico-system"
+if kubectl get namespace "${CALICO_NS}" &>/dev/null; then
+    echo "Restarting Calico Typha to detect KubeVirt VMIM CRD..."
+    if kubectl -n "${CALICO_NS}" get deployment calico-typha &>/dev/null; then
+        kubectl -n "${CALICO_NS}" rollout restart deployment calico-typha
+        kubectl -n "${CALICO_NS}" rollout status deployment calico-typha --timeout=2m
+        echo "  Typha restarted."
+    fi
+
+else
+    echo "Calico namespace '${CALICO_NS}' not found — skipping Typha restart."
+fi
+
 # --- Summary ---
 
 echo ""
